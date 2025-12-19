@@ -56,14 +56,12 @@ DB_PATH = Path("votes.db")
 
 # ================== DATABASE ==================
 def get_conn():
-    # check_same_thread=False เพื่อให้ Streamlit ใช้งานได้ลื่นขึ้นเวลารันซ้ำ
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # สร้างตารางถ้ายังไม่มี
     c.execute("""
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +71,7 @@ def init_db():
         )
     """)
 
-    # ตรวจ schema กันกรณี db เก่าจากเวอร์ชันก่อน
+    # กัน db เก่า schema ไม่ตรง
     c.execute("PRAGMA table_info(votes)")
     cols = {row[1] for row in c.fetchall()}
     required = {"id", "voter", "candidate", "created_at"}
@@ -150,13 +148,13 @@ st.caption(f"เลือกได้สูงสุด {MAX_CHOICES} คน / �
 
 tab_vote, tab_admin = st.tabs(["🗳️ Vote", "🏆 Results (HR)"])
 
+# ------------------ VOTE TAB ------------------
 with tab_vote:
     voter = st.selectbox("ชื่อของคุณ", EMPLOYEES)
 
     # ห้ามโหวตตัวเอง
     candidate_options = [e for e in EMPLOYEES if e != voter]
 
-    # multiselect (เลือกได้สูงสุด 3 คน) + กันเกินด้วยโค้ดด้านล่าง
     st.multiselect(
         f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
         candidate_options,
@@ -179,10 +177,18 @@ with tab_vote:
             add_votes(voter, choices)
             st.success("บันทึกคะแนนเรียบร้อย ขอบคุณค่ะ 💙")
 
+# ------------------ ADMIN TAB ------------------
 with tab_admin:
+    if "reset_done" not in st.session_state:
+        st.session_state.reset_done = False
+
     pw = st.text_input("HR password", type="password")
 
     if pw == ADMIN_PASSWORD:
+        # แสดงข้อความหลังรีเซ็ต (ค้างให้เห็นชัด)
+        if st.session_state.reset_done:
+            st.success("ลบผลโหวตทั้งหมดเรียบร้อยแล้ว ✅")
+
         st.subheader(f"🏆 Top {SHOW_TOP_N} ผู้ได้รับคะแนนสูงสุด")
         rows = top_n(SHOW_TOP_N)
         if rows:
@@ -199,7 +205,7 @@ with tab_admin:
         else:
             st.success("พนักงานโหวตครบทุกคนแล้ว 🎉")
 
-        # ✅ Reset Votes (HR only)
+        # Reset votes
         st.divider()
         st.subheader("⚠️ HR Only: Reset Votes")
         confirm = st.checkbox("ยืนยันว่าต้องการลบคะแนนโหวตทั้งหมด")
@@ -209,7 +215,7 @@ with tab_admin:
                 st.warning("กรุณาติ๊กยืนยันก่อนลบข้อมูล")
             else:
                 reset_votes()
-                st.success("ลบข้อมูลโหวตทั้งหมดเรียบร้อยแล้ว ✅")
+                st.session_state.reset_done = True
                 st.rerun()
 
     elif pw != "":
