@@ -62,7 +62,7 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # สร้างตารางถ้ายังไม่มี
+    # Create table if not exists
     c.execute("""
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,13 +72,12 @@ def init_db():
         )
     """)
 
-    # ตรวจ schema ตรงไหม (ถ้าไม่ตรง = เป็น db เก่าจากเวอร์ชันก่อน)
+    # Ensure schema is correct (handle older DB versions)
     c.execute("PRAGMA table_info(votes)")
     cols = {row[1] for row in c.fetchall()}
     required = {"id", "voter", "candidate", "created_at"}
 
     if not required.issubset(cols):
-        # ล้างตารางเก่า แล้วสร้างใหม่
         c.execute("DROP TABLE IF EXISTS votes")
         c.execute("""
             CREATE TABLE votes (
@@ -95,7 +94,7 @@ def init_db():
 def has_voted(voter: str) -> bool:
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT 1 FROM votes WHERE voter=?", (voter,))
+    c.execute("SELECT 1 FROM votes WHERE voter=? LIMIT 1", (voter,))
     voted = c.fetchone() is not None
     conn.close()
     return voted
@@ -103,10 +102,11 @@ def has_voted(voter: str) -> bool:
 def add_votes(voter: str, candidates: List[str]):
     conn = get_conn()
     c = conn.cursor()
+    now_ts = int(time.time())
     for name in candidates:
         c.execute(
             "INSERT INTO votes(voter, candidate, created_at) VALUES (?,?,?)",
-            (voter, name, int(time.time()))
+            (voter, name, now_ts)
         )
     conn.commit()
     conn.close()
@@ -118,7 +118,7 @@ def top_n(n: int):
         SELECT candidate, COUNT(*) as cnt
         FROM votes
         GROUP BY candidate
-        ORDER BY cnt DESC
+        ORDER BY cnt DESC, candidate ASC
         LIMIT ?
     """, (n,))
     rows = c.fetchall()
@@ -132,6 +132,13 @@ def not_voted_yet():
     voted = {row[0] for row in c.fetchall()}
     conn.close()
     return sorted([e for e in EMPLOYEES if e not in voted])
+
+def reset_votes():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("DELETE FROM votes")
+    conn.commit()
+    conn.close()
 
 # ================== APP ==================
 st.set_page_config(page_title=APP_TITLE)
@@ -148,6 +155,7 @@ with tab_vote:
     # ห้ามโหวตตัวเอง
     candidate_options = [e for e in EMPLOYEES if e != voter]
 
+    # เลือกได้สูงสุด 3 คน
     choices = st.multiselect(
         f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
         candidate_options,
@@ -172,6 +180,7 @@ with tab_vote:
 
 with tab_admin:
     pw = st.text_input("HR password", type="password")
+
     if pw == ADMIN_PASSWORD:
         st.subheader(f"🏆 Top {SHOW_TOP_N} ผู้ได้รับคะแนนสูงสุด")
         rows = top_n(SHOW_TOP_N)
@@ -188,3 +197,19 @@ with tab_admin:
                 st.write(f"- {name}")
         else:
             st.success("พนักงานโหวตครบทุกคนแล้ว 🎉")
+
+        # ✅ Reset Votes (HR only)
+        st.divider()
+        st.subheader("⚠️ HR Only: Reset Votes")
+        confirm = st.checkbox("ยืนยันว่าต้องการลบคะแนนโหวตทั้งหมด")
+
+        if st.button("🗑️ Reset all votes"):
+            if not confirm:
+                st.warning("กรุณาติ๊กยืนยันก่อนลบข้อมูล")
+            else:
+                reset_votes()
+                st.success("ลบข้อมูลโหวตทั้งหมดเรียบร้อยแล้ว ✅")
+                st.experimental_rerun()
+
+    elif pw != "":
+        st.error("รหัสผ่านไม่ถูกต้อง")
