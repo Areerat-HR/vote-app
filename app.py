@@ -10,7 +10,6 @@ ADMIN_PASSWORD = "banana-hr"
 MAX_CHOICES = 3
 SHOW_TOP_N = 5
 
-# ✅ รายชื่อพนักงาน 39 คน (ตามที่แอมให้มา)
 EMPLOYEES = [
     "Apisit Wisai",
     "Areerat Tippayawong",
@@ -62,6 +61,8 @@ def get_conn():
 def init_db():
     conn = get_conn()
     c = conn.cursor()
+
+    # สร้างตารางถ้ายังไม่มี
     c.execute("""
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,6 +71,24 @@ def init_db():
             created_at INTEGER
         )
     """)
+
+    # ตรวจ schema ตรงไหม (ถ้าไม่ตรง = เป็น db เก่าจากเวอร์ชันก่อน)
+    c.execute("PRAGMA table_info(votes)")
+    cols = {row[1] for row in c.fetchall()}
+    required = {"id", "voter", "candidate", "created_at"}
+
+    if not required.issubset(cols):
+        # ล้างตารางเก่า แล้วสร้างใหม่
+        c.execute("DROP TABLE IF EXISTS votes")
+        c.execute("""
+            CREATE TABLE votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                voter TEXT,
+                candidate TEXT,
+                created_at INTEGER
+            )
+        """)
+
     conn.commit()
     conn.close()
 
@@ -124,23 +143,27 @@ st.caption(f"เลือกได้สูงสุด {MAX_CHOICES} คน / �
 tab_vote, tab_admin = st.tabs(["🗳️ Vote", "🏆 Results (HR)"])
 
 with tab_vote:
-    # ✅ 1) พนักงานเลือกชื่อตัวเองจาก list
     voter = st.selectbox("ชื่อของคุณ", EMPLOYEES)
 
-    # ✅ 2) ห้ามโหวตตัวเอง: เอาชื่อตัวเองออกจากตัวเลือก
+    # ห้ามโหวตตัวเอง
     candidate_options = [e for e in EMPLOYEES if e != voter]
 
-    # ✅ 4) เลือกได้สูงสุด 3 คน (multiselect + ตรวจซ้ำตอนกด submit)
     choices = st.multiselect(
         f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
-        candidate_options
+        candidate_options,
+        key="choices"
     )
 
+    # กันเลือกเกิน 3: ตัดให้เหลือ 3 ทันที
+    if len(st.session_state.choices) > MAX_CHOICES:
+        st.session_state.choices = st.session_state.choices[:MAX_CHOICES]
+        st.warning(f"เลือกได้สูงสุด {MAX_CHOICES} คนค่ะ ระบบตัดให้เหลือ {MAX_CHOICES} คนแล้ว")
+
+    choices = st.session_state.choices
+
     if st.button("Submit Vote"):
-        # ✅ โหวตได้ครั้งเดียว
         if has_voted(voter):
             st.error("คุณได้โหวตไปแล้ว")
-        # ✅ ห้ามเลือกเกิน 3 และต้องเลือกอย่างน้อย 1
         elif len(choices) == 0 or len(choices) > MAX_CHOICES:
             st.error("กรุณาเลือก 1–3 คนเท่านั้น")
         else:
@@ -148,7 +171,6 @@ with tab_vote:
             st.success("บันทึกคะแนนเรียบร้อย ขอบคุณค่ะ 💙")
 
 with tab_admin:
-    # ✅ 3) HR เห็นคนที่ยังไม่ได้โหวต + Top 5
     pw = st.text_input("HR password", type="password")
     if pw == ADMIN_PASSWORD:
         st.subheader(f"🏆 Top {SHOW_TOP_N} ผู้ได้รับคะแนนสูงสุด")
