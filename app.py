@@ -1,16 +1,17 @@
 import sqlite3
 import time
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 import streamlit as st
 
 # ================== CONFIG ==================
 APP_TITLE = "Vote: Who do you want to work with most?"
-ADMIN_PASSWORD = "banana-hr"   # เปลี่ยนรหัสได้
+ADMIN_PASSWORD = "banana-hr"
 MAX_CHOICES = 3
 SHOW_TOP_N = 5
 
-CANDIDATES = [
+# ✅ รายชื่อพนักงาน 39 คน (ตามที่แอมให้มา)
+EMPLOYEES = [
     "Apisit Wisai",
     "Areerat Tippayawong",
     "Athiwat Khamnon",
@@ -52,18 +53,6 @@ CANDIDATES = [
     "Worachet Baramee",
 ]
 
-TOKEN_MODE = True
-VALID_TOKENS = {
-    "BC-001","BC-002","BC-003","BC-004","BC-005",
-    "BC-006","BC-007","BC-008","BC-009","BC-010",
-    "BC-011","BC-012","BC-013","BC-014","BC-015",
-    "BC-016","BC-017","BC-018","BC-019","BC-020",
-    "BC-021","BC-022","BC-023","BC-024","BC-025",
-    "BC-026","BC-027","BC-028","BC-029","BC-030",
-    "BC-031","BC-032","BC-033","BC-034","BC-035",
-    "BC-036","BC-037","BC-038","BC-039",
-}
-
 DB_PATH = Path("votes.db")
 
 # ================== DATABASE ==================
@@ -76,45 +65,29 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            voter TEXT,
             candidate TEXT,
-            token TEXT,
             created_at INTEGER
         )
     """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS used_tokens (
-            token TEXT PRIMARY KEY,
-            used_at INTEGER
-        )
-    """)
     conn.commit()
     conn.close()
 
-def token_used(token: str) -> bool:
+def has_voted(voter: str) -> bool:
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT 1 FROM used_tokens WHERE token=?", (token,))
-    used = c.fetchone() is not None
+    c.execute("SELECT 1 FROM votes WHERE voter=?", (voter,))
+    voted = c.fetchone() is not None
     conn.close()
-    return used
+    return voted
 
-def mark_token(token: str):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute(
-        "INSERT INTO used_tokens(token, used_at) VALUES (?,?)",
-        (token, int(time.time()))
-    )
-    conn.commit()
-    conn.close()
-
-def add_votes(candidates: List[str], token: Optional[str]):
+def add_votes(voter: str, candidates: List[str]):
     conn = get_conn()
     c = conn.cursor()
     for name in candidates:
         c.execute(
-            "INSERT INTO votes(candidate, token, created_at) VALUES (?,?,?)",
-            (name, token, int(time.time()))
+            "INSERT INTO votes(voter, candidate, created_at) VALUES (?,?,?)",
+            (voter, name, int(time.time()))
         )
     conn.commit()
     conn.close()
@@ -133,6 +106,14 @@ def top_n(n: int):
     conn.close()
     return rows
 
+def not_voted_yet():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT voter FROM votes")
+    voted = {row[0] for row in c.fetchall()}
+    conn.close()
+    return sorted([e for e in EMPLOYEES if e not in voted])
+
 # ================== APP ==================
 st.set_page_config(page_title=APP_TITLE)
 init_db()
@@ -140,38 +121,48 @@ init_db()
 st.title(APP_TITLE)
 st.caption(f"เลือกได้สูงสุด {MAX_CHOICES} คน / โหวตได้ 1 ครั้ง")
 
-tab_vote, tab_result = st.tabs(["🗳️ Vote", "🏆 Results (Admin)"])
+tab_vote, tab_admin = st.tabs(["🗳️ Vote", "🏆 Results (HR)"])
 
 with tab_vote:
-    token = st.text_input("โค้ดโหวต (จาก HR)").strip().upper()
-    selected = st.multiselect(
-        f"เลือกพนักงาน (สูงสุด {MAX_CHOICES} คน)",
-        CANDIDATES
+    # ✅ 1) พนักงานเลือกชื่อตัวเองจาก list
+    voter = st.selectbox("ชื่อของคุณ", EMPLOYEES)
+
+    # ✅ 2) ห้ามโหวตตัวเอง: เอาชื่อตัวเองออกจากตัวเลือก
+    candidate_options = [e for e in EMPLOYEES if e != voter]
+
+    # ✅ 4) เลือกได้สูงสุด 3 คน (multiselect + ตรวจซ้ำตอนกด submit)
+    choices = st.multiselect(
+        f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
+        candidate_options
     )
 
     if st.button("Submit Vote"):
-        if TOKEN_MODE:
-            if token not in VALID_TOKENS:
-                st.error("โค้ดไม่ถูกต้อง")
-            elif token_used(token):
-                st.error("โค้ดนี้ถูกใช้แล้ว")
-            elif len(selected) == 0 or len(selected) > MAX_CHOICES:
-                st.error("กรุณาเลือก 1–3 คน")
-            else:
-                add_votes(selected, token)
-                mark_token(token)
-                st.success("บันทึกคะแนนเรียบร้อย ขอบคุณค่ะ 💙")
+        # ✅ โหวตได้ครั้งเดียว
+        if has_voted(voter):
+            st.error("คุณได้โหวตไปแล้ว")
+        # ✅ ห้ามเลือกเกิน 3 และต้องเลือกอย่างน้อย 1
+        elif len(choices) == 0 or len(choices) > MAX_CHOICES:
+            st.error("กรุณาเลือก 1–3 คนเท่านั้น")
         else:
-            if len(selected) == 0 or len(selected) > MAX_CHOICES:
-                st.error("กรุณาเลือก 1–3 คน")
-            else:
-                add_votes(selected, None)
-                st.success("บันทึกคะแนนเรียบร้อย ขอบคุณค่ะ 💙")
+            add_votes(voter, choices)
+            st.success("บันทึกคะแนนเรียบร้อย ขอบคุณค่ะ 💙")
 
-with tab_result:
-    pw = st.text_input("Admin password", type="password")
+with tab_admin:
+    # ✅ 3) HR เห็นคนที่ยังไม่ได้โหวต + Top 5
+    pw = st.text_input("HR password", type="password")
     if pw == ADMIN_PASSWORD:
-        results = top_n(SHOW_TOP_N)
-        for i, (name, cnt) in enumerate(results, start=1):
-            st.write(f"#{i} {name} — {cnt} votes")
+        st.subheader(f"🏆 Top {SHOW_TOP_N} ผู้ได้รับคะแนนสูงสุด")
+        rows = top_n(SHOW_TOP_N)
+        if rows:
+            for i, (name, cnt) in enumerate(rows, start=1):
+                st.write(f"#{i} {name} — {cnt} votes")
+        else:
+            st.info("ยังไม่มีคะแนนโหวต")
 
+        st.subheader("📋 พนักงานที่ยังไม่ได้โหวต")
+        remaining = not_voted_yet()
+        if remaining:
+            for name in remaining:
+                st.write(f"- {name}")
+        else:
+            st.success("พนักงานโหวตครบทุกคนแล้ว 🎉")
