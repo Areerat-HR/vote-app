@@ -155,18 +155,14 @@ with tab_vote:
     # ห้ามโหวตตัวเอง
     candidate_options = [e for e in EMPLOYEES if e != voter]
 
-    st.multiselect(
+    st.info(f"คุณเลือกโหวตได้ไม่เกิน {MAX_CHOICES} คน")
+
+    choices = st.multiselect(
         f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
         candidate_options,
-        key="choices"
+        key="choices",
+        max_selections=MAX_CHOICES,   # ✅ กันเลือกเกิน 3 ตั้งแต่แรก (ไม่ error)
     )
-
-    # ✅ ถ้าเลือกเกิน 3: เตือนแบบไม่ใช้ error + ตัดให้เหลือ 3
-    if len(st.session_state.get("choices", [])) > MAX_CHOICES:
-        st.session_state["choices"] = st.session_state["choices"][:MAX_CHOICES]
-        st.warning(f"คุณเลือกโหวตได้ไม่เกิน {MAX_CHOICES} คน")
-
-    choices = st.session_state.get("choices", [])
 
     if st.button("Submit Vote"):
         if has_voted(voter):
@@ -185,7 +181,6 @@ with tab_admin:
     pw = st.text_input("HR password", type="password")
 
     if pw == ADMIN_PASSWORD:
-        # แสดงข้อความหลังรีเซ็ต (ค้างให้เห็นชัด)
         if st.session_state.reset_done:
             st.success("ลบผลโหวตทั้งหมดเรียบร้อยแล้ว ✅")
 
@@ -205,7 +200,6 @@ with tab_admin:
         else:
             st.success("พนักงานโหวตครบทุกคนแล้ว 🎉")
 
-        # Reset votes
         st.divider()
         st.subheader("⚠️ HR Only: Reset Votes")
         confirm = st.checkbox("ยืนยันว่าต้องการลบคะแนนโหวตทั้งหมด")
