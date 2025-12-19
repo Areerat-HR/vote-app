@@ -56,13 +56,14 @@ DB_PATH = Path("votes.db")
 
 # ================== DATABASE ==================
 def get_conn():
-    return sqlite3.connect(DB_PATH)
+    # check_same_thread=False เพื่อให้ Streamlit ใช้งานได้ลื่นขึ้นเวลารันซ้ำ
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # Create table if not exists
+    # สร้างตารางถ้ายังไม่มี
     c.execute("""
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,7 +73,7 @@ def init_db():
         )
     """)
 
-    # Ensure schema is correct (handle older DB versions)
+    # ตรวจ schema กันกรณี db เก่าจากเวอร์ชันก่อน
     c.execute("PRAGMA table_info(votes)")
     cols = {row[1] for row in c.fetchall()}
     required = {"id", "voter", "candidate", "created_at"}
@@ -155,19 +156,19 @@ with tab_vote:
     # ห้ามโหวตตัวเอง
     candidate_options = [e for e in EMPLOYEES if e != voter]
 
-    # เลือกได้สูงสุด 3 คน
-    choices = st.multiselect(
+    # multiselect (เลือกได้สูงสุด 3 คน) + กันเกินด้วยโค้ดด้านล่าง
+    st.multiselect(
         f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
         candidate_options,
         key="choices"
     )
 
     # กันเลือกเกิน 3: ตัดให้เหลือ 3 ทันที
-    if len(st.session_state.choices) > MAX_CHOICES:
-        st.session_state.choices = st.session_state.choices[:MAX_CHOICES]
+    if len(st.session_state.get("choices", [])) > MAX_CHOICES:
+        st.session_state["choices"] = st.session_state["choices"][:MAX_CHOICES]
         st.warning(f"เลือกได้สูงสุด {MAX_CHOICES} คนค่ะ ระบบตัดให้เหลือ {MAX_CHOICES} คนแล้ว")
 
-    choices = st.session_state.choices
+    choices = st.session_state.get("choices", [])
 
     if st.button("Submit Vote"):
         if has_voted(voter):
@@ -209,7 +210,7 @@ with tab_admin:
             else:
                 reset_votes()
                 st.success("ลบข้อมูลโหวตทั้งหมดเรียบร้อยแล้ว ✅")
-                st.experimental_rerun()
+                st.rerun()
 
     elif pw != "":
         st.error("รหัสผ่านไม่ถูกต้อง")
