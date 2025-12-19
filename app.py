@@ -158,7 +158,7 @@ with tab_vote:
     st.info(f"คุณเลือกโหวตได้ไม่เกิน {MAX_CHOICES} คน")
 
     choices = st.multiselect(
-        f"เลือกพนักงานที่อยากทำงานด้วย (สูงสุด {MAX_CHOICES} คน)",
+        f"เลือกพนักงานที่อยากทำงานด้วยมากที่สุด ไม่เกิน 3 คน (สูงสุด {MAX_CHOICES} คน)",
         candidate_options,
         key="choices",
         max_selections=MAX_CHOICES,   # ✅ กันเลือกเกิน 3 ตั้งแต่แรก (ไม่ error)
