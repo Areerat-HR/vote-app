@@ -6,7 +6,7 @@ import streamlit as st
 
 # ================== CONFIG ==================
 APP_TITLE = "Vote: Who do you want to work with the most?"
-ADMIN_PASSWORD = "banana-hr"
+ADMIN_PASSWORD = "22"
 MAX_CHOICES = 3
 SHOW_TOP_N = 5
 
